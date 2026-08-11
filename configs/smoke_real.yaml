@@ -1,0 +1,18 @@
+schema_version: "1.0"
+dataset_root: local_data/retarget_smoke_real_v1
+output_root: runs
+run_id: smoke-real-v1-20260810
+seed: 20260810
+device: cpu
+methods: [direct_warp, crop, seam, mesh]
+analysis:
+  gradient_weight: 0.45
+  contrast_weight: 0.35
+  center_weight: 0.20
+  region_padding_ratio: 0.02
+method_parameters:
+  direct_warp: {interpolation: lanczos}
+  crop: {grid_step: 24, scales: [1.0, 0.94, 0.88]}
+  seam: {max_seams_per_axis: 24, protection_weight: 18.0, tolerance_weight: 3.0}
+  mesh: {grid_columns: 12, grid_rows: 12, protection_gain: 1.8, minimum_cell_fraction: 0.25}
+selector: {selector_id: technical_risk_v1}
