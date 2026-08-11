@@ -18,6 +18,8 @@ dist/
 local_data/
 private_context/
 runs/
+!docs/runs/
+!docs/runs/*.md
 tests/fixtures/generated/
 models/
 checkpoints/
