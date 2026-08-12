@@ -1,5 +1,9 @@
 # retarget-agent
 
+最新的 30 张纯 AIGC、三种 Agent、四种传统方法与 Qwen4+SeedDream Hybrid 的
+质量/时延/API 成本实测见
+[`docs/runs/aigc30-seedream5-20260812.md`](docs/runs/aigc30-seedream5-20260812.md)。
+
 完整的 Full300 架构、算法路线、Agent 动态路由、前后端时序、资源成本和复现说明见
 [`docs/runs/square-public-v2-full300-20260812-detailed.md`](docs/runs/square-public-v2-full300-20260812-detailed.md)。
 

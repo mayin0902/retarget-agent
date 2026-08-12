@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 from dataclasses import replace
 from decimal import Decimal
@@ -172,6 +174,46 @@ def test_success_freezes_one_output_and_commits_unknown_actual(tmp_path: Path) -
     assert budget.snapshot().unknown_actual_count == 1
 
 
+def test_base64_source_is_validated_sent_and_not_persisted(tmp_path: Path) -> None:
+    source = _image_bytes((24, 48))
+    data_uri = "data:image/png;base64," + base64.b64encode(source).decode("ascii")
+    client = _client()
+    provider = _provider(tmp_path, client=client)
+
+    result = provider.generate(
+        _request(
+            source_url=None,
+            source_data_uri=data_uri,
+            source_sha256=hashlib.sha256(source).hexdigest(),
+        )
+    )
+
+    assert result.output_path.is_file()
+    assert client.post_calls[0][1]["json"]["image"] == data_uri
+    cache_text = (tmp_path / "cache" / "seedream.json").read_text(encoding="utf-8")
+    assert data_uri not in cache_text
+    assert "base64_data_uri" in cache_text
+
+
+def test_base64_source_hash_mismatch_is_rejected_before_http(tmp_path: Path) -> None:
+    source = _image_bytes((24, 48))
+    data_uri = "data:image/png;base64," + base64.b64encode(source).decode("ascii")
+    client = _client()
+    provider = _provider(tmp_path, client=client)
+
+    with pytest.raises(SeedDreamProviderError) as caught:
+        provider.generate(
+            _request(
+                source_url=None,
+                source_data_uri=data_uri,
+                source_sha256="b" * 64,
+            )
+        )
+
+    assert caught.value.code is SeedDreamErrorCode.INVALID_REQUEST
+    assert client.post_calls == client.get_calls == []
+
+
 def test_persistent_cache_prevents_a_second_http_call_and_contains_no_secrets(
     tmp_path: Path,
 ) -> None:
@@ -232,6 +274,13 @@ def test_idempotency_key_changes_for_every_required_factor(tmp_path: Path) -> No
             SeedDreamErrorCode.INVALID_REQUEST,
         ),
         ({"source_url": "https://127.0.0.1/source.png"}, SeedDreamErrorCode.INVALID_REQUEST),
+        (
+            {
+                "source_url": None,
+                "source_data_uri": "data:image/png;base64,not-base64",
+            },
+            SeedDreamErrorCode.INVALID_REQUEST,
+        ),
         ({"seed": 9}, SeedDreamErrorCode.INVALID_REQUEST),
         ({"max_cost_cny": Decimal("0.59")}, SeedDreamErrorCode.COST_LIMIT_EXCEEDED),
     ],

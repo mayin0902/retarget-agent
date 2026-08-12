@@ -8,6 +8,8 @@ evaluate business quality.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import ipaddress
 import json
@@ -151,7 +153,8 @@ class SeedDreamGenerationRequest(FrozenModel):
     task_id: str
     run_id: str
     request_id: str
-    source_url: str
+    source_url: str | None = None
+    source_data_uri: str | None = Field(default=None, exclude=True, repr=False)
     source_sha256: str
     source_is_public: bool = False
     allow_data_egress: bool = False
@@ -184,9 +187,11 @@ class SeedDreamGenerationRequest(FrozenModel):
         return normalized
 
     @model_validator(mode="after")
-    def square_target_only(self) -> SeedDreamGenerationRequest:
+    def valid_request_shape(self) -> SeedDreamGenerationRequest:
         if self.target_width != self.target_height:
             raise ValueError("this SeedDream experiment adapter accepts square targets only")
+        if (self.source_url is None) == (self.source_data_uri is None):
+            raise ValueError("provide exactly one of source_url or source_data_uri")
         return self
 
     @property
@@ -218,6 +223,7 @@ class _IdempotencyMaterial(FrozenModel):
     prompt_sha256: str
     seed: int | None
     generation_config_sha256: str
+    source_transport: str = "url"
 
 
 class _CacheRecord(FrozenModel):
@@ -442,12 +448,26 @@ class SeedDreamProvider:
                 SeedDreamErrorCode.DATA_EGRESS_DENIED,
                 "explicit public-source and data-egress approval is required",
             )
-        try:
-            _validate_public_https_url(request.source_url, purpose="source image")
-        except ValueError as error:
-            raise SeedDreamProviderError(
-                SeedDreamErrorCode.INVALID_REQUEST, "source image URL is not allowed"
-            ) from error
+        if request.source_url is not None:
+            try:
+                _validate_public_https_url(request.source_url, purpose="source image")
+            except ValueError as error:
+                raise SeedDreamProviderError(
+                    SeedDreamErrorCode.INVALID_REQUEST, "source image URL is not allowed"
+                ) from error
+        else:
+            try:
+                decoded = _decode_data_image(request.source_data_uri or "")
+            except ValueError as error:
+                raise SeedDreamProviderError(
+                    SeedDreamErrorCode.INVALID_REQUEST,
+                    "source image Base64 data is not allowed",
+                ) from error
+            if hashlib.sha256(decoded).hexdigest() != request.source_sha256:
+                raise SeedDreamProviderError(
+                    SeedDreamErrorCode.INVALID_REQUEST,
+                    "source image Base64 data does not match source_sha256",
+                )
         if request.output_count != 1:
             raise SeedDreamProviderError(
                 SeedDreamErrorCode.INVALID_REQUEST, "exactly one output is allowed per task"
@@ -471,13 +491,14 @@ class SeedDreamProvider:
             prompt_sha256=request.prompt_sha256,
             seed=request.seed,
             generation_config_sha256=self._config.generation_config_hash,
+            source_transport="base64_data_uri" if request.source_data_uri else "url",
         )
 
     def _submit_once(self, request: SeedDreamGenerationRequest) -> _HttpResponse:
         payload = {
             "model": self._config.model,
             "prompt": request.prompt,
-            "image": request.source_url,
+            "image": request.source_data_uri or request.source_url,
             "response_format": "url",
             "size": self._config.size,
             "stream": False,
@@ -813,6 +834,40 @@ def _sha256_json(value: Any) -> str:
 def _normalized_media_type(value: str) -> str:
     normalized = value.split(";", 1)[0].strip().lower()
     return "image/jpeg" if normalized == "image/jpg" else normalized
+
+
+def _decode_data_image(value: str) -> bytes:
+    """Validate and decode an official image Base64 data URI without persisting it."""
+
+    prefix, separator, encoded = value.partition(",")
+    if separator != "," or prefix.lower() not in {
+        "data:image/jpeg;base64",
+        "data:image/png;base64",
+        "data:image/webp;base64",
+    }:
+        raise ValueError("unsupported image data URI")
+    try:
+        decoded = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError, TypeError) as error:
+        raise ValueError("invalid Base64 image") from error
+    if not decoded or len(decoded) > 10 * 1024 * 1024:
+        raise ValueError("Base64 image exceeds the 10 MiB input safety bound")
+    declared_mime = prefix[5:].split(";", 1)[0].lower()
+    try:
+        with Image.open(BytesIO(decoded)) as image:
+            width, height = image.size
+            decoded_mime = _FORMAT_TO_MIME.get(image.format or "")
+            if (
+                decoded_mime != declared_mime
+                or width <= 0
+                or height <= 0
+                or width * height > 40_000_000
+            ):
+                raise ValueError("Base64 image type or dimensions are invalid")
+            image.verify()
+    except (OSError, UnidentifiedImageError, ValueError) as error:
+        raise ValueError("Base64 source is not a valid bounded image") from error
+    return decoded
 
 
 def _decode_image(data: bytes, max_pixels: int) -> tuple[int, int, str]:
