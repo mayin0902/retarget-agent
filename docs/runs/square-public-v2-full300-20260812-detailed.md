@@ -6,6 +6,7 @@
 > 冻结候选：每 Task 固定 `direct_warp / crop / seam / mesh` 四张，共 1,200 张
 > 最终聚合：`full300-agent-complete-v2`，18/18 arm 分母完整
 > 重要限制：本文的质量分、Proxy A/B/C 和 VLM Judge 尚未用正式人工盲评标定，不能解释成线上业务通过率
+> AIGC 增补：30 张困难集实测与 Full300 救援估算见 `aigc30-seedream5-20260812.md` 和 `aigc-rescue-estimate-20260812.md`
 
 本报告补充简版运行报告 `square-public-v2-full300-20260812.md`。简版回答“结果是什么”，本文回答“系统怎样运行、每条路线怎样决策、前后端怎样协作、证据怎样冻结和复现”。
 
@@ -34,7 +35,7 @@
 | 相比无 Agent selector 的质量增量 | **+3.672** |
 | 相比无 Agent selector 的成功率增量 | **+15.00 个百分点** |
 
-Qwen3-VL-8B 没有产生足以抵消延迟和能耗增量的质量收益；SmolVLM2 更快，但结构化响应可靠性和选图质量明显不足。外部 SeedDream 真调用为 0，不是链路缺失，而是逐图 egress、许可、预算和凭据安全门禁共同阻止了不应发生的付费调用。
+Qwen3-VL-8B 没有产生足以抵消延迟和能耗增量的质量收益；SmolVLM2 更快，但结构化响应可靠性和选图质量明显不足。原始 Full300 Agent Benchmark 的外部 SeedDream 真调用为 0；后续在单独冻结、逐图允许 egress 的 AIGC30 困难集上发起了 30 个请求，得到 21 张图片，其中 16 张达到 Proxy A/B。两次运行必须分开理解，不能把后续 AIGC 结果回填成原 Full300 实测。
 
 ## 2. 系统范围与事实边界
 
@@ -46,7 +47,7 @@ Qwen3-VL-8B 没有产生足以抵消延迟和能耗增量的质量收益；SmolV
 - Evaluation Replay：OCR、人脸、人物、商品、Logo 候选区域、结构线、内容保真、视觉完整、构图和资源指标。
 - 无 Agent、规则、Proxy、三种视觉模型、always-on/conditional 路由对照。
 - Agent 结构化 JSON 校验、最多一次修正、确定性安全回退、缓存和调用审计。
-- 外部生成计划器、SeedDream provider 安全边界、预算账本与 fake HTTP 测试。
+- 外部生成计划器、SeedDream provider 安全边界、预算账本、fake HTTP 测试，以及独立 AIGC30 真实调用证据。
 - FastAPI + 原生 HTML/CSS/JavaScript 评审网页，以及兼容的 Streamlit 评审适配器。
 - 分层报告、跨 Pilot/Held-out 聚合、GPU/CPU/能耗/成本 sidecar。
 
@@ -54,7 +55,7 @@ Qwen3-VL-8B 没有产生足以抵消延迟和能耗增量的质量收益；SmolV
 
 - 没有正式人工盲评，因此 Proxy Success 不是业务真实成功率。
 - Logo 是需要保护的 Logo-like 区域检测，不是品牌分类器，也不承诺识别具体商标名称。
-- SeedDream provider 已完成安全和契约测试，但本轮没有真实付费结果，不能宣称生成质量。
+- SeedDream provider 已完成安全和契约测试；独立 AIGC30 有 30 个真实请求和 21 张输出，但仅是困难分层小样本，不能把外推值宣称为 Full300 实测或线上 SLA。
 - AnyText2 只有一次受控公开图 Smoke，且文字生成失败，不能进入主路由。
 - FastAPI 当前是单个冻结 Run 的本地评审服务，不是完整的多租户异步生产 Job 平台。
 - 远端 Agent 服务只在 SSH 主机 loopback 临时启动，回放结束后已停止，不是常驻线上服务。
@@ -691,6 +692,24 @@ runs/<run-id>/
 
 Conditional 4B 相比 always-on 少 28 次调用，结果几乎不变，是当前最合理的默认值。下一步优化应优先减少不必要调用、修正裁切完整性代理和补正式人工标定，而不是直接扩大 VLM 参数。
 
+### 16.3 无 AIGC、纯 AIGC 与 Hybrid 的统一比较
+
+以下表把 Full300 实测基线和 AIGC30 外推放在一起。`实测`与`估算`不可混用；Hybrid 的 AIGC 失败会回退传统候选，因此文件交付率为 100%，但 Proxy C 回退不算质量成功。
+
+| 路线 | 证据 | 底座均分 | 基线 Proxy A/B | Agent 调用 | AIGC 调用 | 最终 Proxy A/B | API 成本 |
+|---|---|---:|---:|---:|---:|---:|---:|
+| 无 Agent selector | Full300 实测 | 71.633 | 234/300，78.0% | 0 | 0 | 234/300，78.0% | 0 元 |
+| Rules，不接 AIGC | Full300 实测 | 73.701 | 258/300，86.0% | 0 | 0 | 258/300，86.0% | 0 元 |
+| Qwen4 Always，不接 AIGC | Full300 实测 | **75.327** | **279/300，93.0%** | 300 | 0 | **279/300，93.0%** | 0 元 |
+| **Qwen4 Conditional，不接 AIGC** | **Full300 实测** | **75.305** | **279/300，93.0%** | **272** | **0** | **279/300，93.0%** | **0 元** |
+| 全部 AIGC | AIGC30 外推 | n/a | n/a | 0 | 300 | 160–182/300，53.3%–60.5% | 87–180 元 |
+| **Qwen4 Conditional + AIGC** | **17/21 直接覆盖 + 4 张同场景点估计** | 75.305 | 279/300，93.0% | 272 | **21** | **约 289/300，96.3%** | **6–12 元** |
+| Rules + AIGC | 17/34 直接覆盖后按 2 倍外推 | 73.701 | 258/300，86.0% | 0 | 34 | 约 274/300，91.3% | 9.6–19.2 元 |
+
+Qwen4 Conditional 不接 AIGC 已经比无 Agent selector 多成功 45 张。再对它的 21 张 Proxy C 调用 AIGC，点估计新增救回 10 张，即 `+3.3` 个百分点，每张增量救援约 `0.60–1.20 元`。相比之下，Rules Hybrid 预计多调用 13 次 AIGC，却仍比 Qwen4 无 AIGC 低 `1.7` 个百分点；全部 AIGC 同时更贵且成功率更低。
+
+Qwen4 Hybrid 没有给“最终自动质量均分”点估计：4 个 Qwen4 失败任务未进行 AIGC 实测，而且传统输出与生成输出的 proxy score 未经人工盲评校准，不能用成功率凭空反推均分。详细公式、Wilson 区间、漏测 ID 和可复现脚本见 `aigc-rescue-estimate-20260812.md`。
+
 ## 17. 代表图与错误模式
 
 本地扩展交付包包含 28 个代表 Task：每类场景 4 个，分别覆盖最低最佳分、方法差异最大、极端/中位难例和 Qwen4B 改选收益最大。每 Task 目录含原图、四张独立 1024² PNG、分数排名、Agent 选择、transform、来源和文字评分原因。
@@ -769,7 +788,7 @@ retarget-agent review ui runs\<completed-run-id>
 | M5 自动评价 | 完成可回放版本 | 用正式 Reviewer 数据校准阈值与 Bad Pass |
 | M6 人工标定 | 按要求暂缓 | 后续做盲评、交叉 Reviewer 一致性 |
 | M7 Judge Agent | 三模型完整对照完成 | 固化 4B conditional，优化触发率和 Prompt |
-| M8 外部生成 | Adapter/计划/测试完成，真实质量未验证 | 轮换 key 后只跑冻结 4-call Pilot |
+| M8 外部生成 | Adapter/计划/测试完成；AIGC30 已真实运行 30 请求、21 输出 | 先做人评校准，不再用付费调用扩大同口径小样本 |
 | M8 文字回贴 | 实验可测，质量未通过 | 改善背景清理、字形和融合边界 |
 | M9 服务 | 本地完整评审前后端 | 增加异步 Job、取消、结果 API 和生产鉴权 |
 
@@ -778,15 +797,15 @@ retarget-agent review ui runs\<completed-run-id>
 1. 先用 28 个代表 Task 和分层抽样建立正式人工盲评；
 2. 用人工 Bad Pass 校准“全身被裁但脸在”的 Proxy 漏洞；
 3. 固化 Qwen4B conditional，继续降低 272/300 的触发率；
-4. 轮换 SeedDream key 后只执行冻结 4-call，不扩大预算；
-5. 只有真实生成质量通过后，才把 AIGC Candidate 合并进统一 Benchmark；
+4. 用 AIGC30 的 21 张输出做人评校准，重点确认 Proxy A/B 是否高估文字或主体缺失；
+5. 校准通过后再决定是否对 Qwen4 漏测的 4 张 extreme structure 补测，不先扩大到全量 AIGC；
 6. 最后再做 M9 异步生产 Job，而不是把当前本地 Review API 宣称为生产平台。
 
 ## 20. 最终事实清单
 
 - 300/300 真实公开 Task，1,200/1,200 传统候选，18/18 arm 完整。
 - 推荐 Qwen3-VL-4B conditional；不是 8B，也不是 Smol。
-- SeedDream 实际调用 0、实际付费 0；计划成本与实际成本分开记录。
+- 原始 Full300 Agent Benchmark 的 SeedDream 实际调用为 0；独立 AIGC30 有 30 个真实请求、21 张输出、29 个可能计费请求，估算成本 8.7–17.4 元，provider 未返回实际账单所以 actual 仍为 null。
 - AnyText2 单图执行成功但文字质量失败；文字回贴仍为实验。
 - 前端、FastAPI、Streamlit 共用服务层；媒体只能按冻结 ID 读取。
 - 运行像素、模型权重、密钥、远端地址和本地缓存不进入 Git。

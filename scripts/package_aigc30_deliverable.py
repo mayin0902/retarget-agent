@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RUN = ROOT / "runs/aigc30-seedream5-v3-20260812"
-OUTPUT = ROOT / "local_data/deliverables/retarget-agent-aigc30-20260812-v6"
+OUTPUT = ROOT / "local_data/deliverables/retarget-agent-aigc30-20260812-v7"
 ZIP = OUTPUT.with_suffix(".zip")
 
 
@@ -37,6 +37,10 @@ def main() -> None:
         _copy(source, OUTPUT / "reports-and-audit" / source.name)
 
     evidence = OUTPUT / "machine-readable-evidence"
+    _copy(
+        ROOT / "local_data/aigc-rescue-estimate-v2.json",
+        evidence / "full300-aigc-rescue-estimate-v2.json",
+    )
     _copy(RUN / "run-summary.json", evidence / "run-summary.json")
     shutil.copytree(RUN / "results", evidence / "generation-results")
     shutil.copytree(
@@ -93,8 +97,10 @@ This package contains the complete 30-task pure-AIGC and hybrid comparison.
 - Machine-readable generation, evaluation and route benchmark evidence.
 - Source-code snapshot. GitHub remains the authoritative versioned source.
 
-Costs are estimates (8.70-17.40 CNY pure; 4.80-9.60 CNY hybrid), because the provider
-did not return actual billed amounts. Agent token cost is zero in the requested company scenario.
+Costs are estimates because the provider did not return actual billed amounts. AIGC30
+costs 8.70-17.40 CNY. The Full300 Qwen4-without-AIGC baseline is 279/300 (93.0%);
+Qwen4 Hybrid is estimated at 289/300 (96.3%) with 21 AIGC calls and 6.0-12.0 CNY.
+Agent token cost is zero in the requested company scenario.
 """
     (OUTPUT / "DELIVERABLE_README.md").write_text(readme, encoding="utf-8")
 

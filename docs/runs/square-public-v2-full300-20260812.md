@@ -2,6 +2,8 @@
 
 > 项目级架构、每条算法/Agent/AIGC 路线、前后端时序、成本状态机与完整复现说明见
 > [`square-public-v2-full300-20260812-detailed.md`](square-public-v2-full300-20260812-detailed.md)。
+> Qwen4 失败救援、纯 AIGC 和 Hybrid 的统一成功率/成本估算见
+> [`aigc-rescue-estimate-20260812.md`](aigc-rescue-estimate-20260812.md)。
 
 > 日期：2026-08-12
 > 数据集：`retarget_square_public_v2`
@@ -93,6 +95,18 @@ Held-out 分层说明了为什么总均值不够：
 
 Token 总量只在每次调用都有 usage 时才可称完整总量；表中明确写“已观测”，缺失调用没有按 0 填充。Conditional 的 272 次调用中，Qwen4B/Qwen8B 各有 271 次缓存命中；该回放证明选择一致性，表中时延仍采用生产中真实调用的冻结等价时延。
 
+### 5.1 无 AIGC 与 AIGC Hybrid 放在一起
+
+| 路线 | 基线 Proxy A/B | AIGC 调用 | 最终 Proxy A/B | API 成本 | 证据状态 |
+|---|---:|---:|---:|---:|---|
+| Rules，不接 AIGC | 258/300，86.0% | 0 | 258/300，86.0% | 0 元 | Full300 实测 |
+| **Qwen4 Conditional，不接 AIGC** | **279/300，93.0%** | **0** | **279/300，93.0%** | **0 元** | **Full300 实测** |
+| 全部 AIGC | n/a | 300 | 53.3%–60.5% | 87–180 元 | AIGC30 外推 |
+| **Qwen4 Conditional + AIGC** | **279/300，93.0%** | **21** | **约 289/300，96.3%** | **6–12 元** | 17/21 直接覆盖 + 4 张同场景点估计 |
+| Rules + AIGC | 258/300，86.0% | 34 | 约 274/300，91.3% | 9.6–19.2 元 | 17/34 直接覆盖后外推 |
+
+Qwen4 不接 AIGC 已是最强零外部成本路线。Hybrid 点估计再救回约 10 张（`+3.3` 个百分点），且只在 21 个失败项上增加 SeedDream 延迟与现金成本。Agent token 按公司内部提供计为 0；AIGC 的“返回图片”与“达到 Proxy A/B”分开统计。
+
 模型固定 revision：
 
 - Qwen3-VL-4B `ebb281ec70b05090aa6165b016eac8ec08e71b17`
@@ -115,9 +129,9 @@ Token 总量只在每次调用都有 usage 时才可称完整总量；表中明�
 
 ## 7. 外部生成与文字回贴
 
-Full300 四路投票共请求 70 个唯一 Task：Pilot 10、Held-out 60。逐图 egress 和预算门禁后只有 Pilot 的 4 张公开结构图可进入 SeedDream 队列；计划成本 `1.20–2.40 CNY`，远低于 100 CNY 上限。Held-out 240 张全部 `api_egress_allowed=false`，因此即使 Agent 请求也选择 0 次付费调用。
+原始 Full300 四路投票共请求 70 个唯一 Task：Pilot 10、Held-out 60。逐图 egress 和预算门禁后只有 Pilot 的 4 张公开结构图可进入当时的 SeedDream 队列；该 Full300 Agent Benchmark 实际 provider calls 为 0，不能回填后续生成结果。
 
-本轮实际 SeedDream provider calls 为 0、付费支出为 0。原因不是省略链路：Provider、预算预留、HTTPS/SSRF、幂等、缓存、输出尺寸/解码/哈希验证已有 fake-server 测试；真实 key 曾出现在工具日志，按安全规则视为失效，未用它发起付费请求。轮换 key 后只需执行已冻结的 4-call Pilot 计划，预计仍为 1.20–2.40 CNY。
+后续独立冻结的 AIGC30 困难集实际发起 30 个 SeedDream 5.0 请求：21 张生成成功、9 张失败，16/30 达到 Proxy A/B，29 个请求存在计费风险，API 成本估算 `8.70–17.40 CNY`，actual 因 provider 未返回账单而保持 null。Qwen4 的 21 个失败项中有 17 个被 AIGC30 直接覆盖，8/17 真正救回；据此和 4 张同场景样本估计 Qwen4 Hybrid 为 289/300、6–12 元。Provider 的预算预留、HTTPS/SSRF、幂等、缓存、Base64/URL 输出、尺寸/解码/哈希验证均已有测试。
 
 AnyText2 做过一个公开 1024²、30-step 受控 Smoke：纯采样 13.88s、冷启动 58.81s、峰值显存 11,373MiB；目标文字 OCR 召回和序列相似度均为 0，判业务失败。5 CNY/GPUh 冷启动情景约 0.0816 CNY，但 cost per usable result 为 `null`。自研不透明文字回贴单区阶段 0.0084s、目标字符召回/相似度 0.75，仍有底层文字残片和拼接边界，也不进入生产路由。
 
@@ -147,10 +161,10 @@ AnyText2 做过一个公开 1024²、30-step 受控 Smoke：纯采样 13.88s、�
 | M5 | 自动部分完成 | 硬检查、Top-1、Oracle、Regret、scene/difficulty 报告已完成；人工校准后的 Bad Pass/False Reject 仍待 M6 标签 |
 | M6 | 明确暂缓 | 按用户要求暂不做人工指引与人工评分实验 |
 | M7 | Judge 实验完成 | 三模型 always/conditional、失败回退、Token/时延/能耗完成；Protection Agent 的语义消歧 Generation 对照尚未做 |
-| M8 | 部分完成 | SeedDream adapter/fake 测试和 AnyText2 Smoke 完成；轮换 key 后真实 4-call Smoke、通用 WorkflowBackend 正式接入仍待做 |
+| M8 | 部分完成 | SeedDream adapter、AIGC30 真实 30 请求和 AnyText2 Smoke 完成；正式人评校准、统一生产 WorkflowBackend 接入仍待做 |
 | M9 | 部分完成 | CLI、Streamlit、高清 FastAPI 评审复用服务层；完整异步 retarget Job/取消/结果 API 尚未完成 |
 
-因此，之前要求的高清 UI、清晰字体、详细 Reviewer 指引、高清原图读取和完整共享保护分析已经关闭了 M2a/M4 的对应工作，不需要再重复做。下一阶段真正有价值的工作是人工校准 M5/M6、Protection Agent 生成对照、轮换 SeedDream key 后的 4-call Smoke，以及完整 M9 Job API。
+因此，之前要求的高清 UI、清晰字体、详细 Reviewer 指引、高清原图读取和完整共享保护分析已经关闭了 M2a/M4 的对应工作，不需要再重复做。下一阶段真正有价值的工作是人工校准 M5/M6、Protection Agent 生成对照，以及完整 M9 Job API；在人工校准前不建议继续扩大付费 AIGC 样本。
 
 ## 10. 可复现证据
 

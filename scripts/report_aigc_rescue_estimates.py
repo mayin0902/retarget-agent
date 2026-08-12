@@ -7,6 +7,7 @@ only the untested denominator explicitly described in the output.
 
 from __future__ import annotations
 
+import argparse
 import csv
 import json
 import math
@@ -19,6 +20,24 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 AIGC_RUN = ROOT / "runs/aigc30-seedream5-v3-20260812"
 AIGC_EVALUATION = AIGC_RUN / "evaluations/auto-proxy-v1p1-aigc30-20260812"
+FULL300_BENCHMARK = (
+    ROOT
+    / "runs/full300-square-public-v2-20260812/benchmarks/"
+    "full300-agent-complete-v2/report.json"
+)
+BASELINE_ARM_IDS = (
+    "posthoc-proxy-upper-bound",
+    "method-direct-warp",
+    "method-crop",
+    "method-seam",
+    "method-mesh",
+    "no-agent-selector",
+    "rules-router",
+    "qwen3vl4b-always",
+    "qwen3vl4b-conditional",
+    "qwen3vl8b-conditional",
+    "smolvlm2-conditional",
+)
 ROUNDS = {
     "pilot60": {
         "run": ROOT / "runs/square-public-v2-pilot60-20260812",
@@ -100,7 +119,56 @@ def _observations(
     }
 
 
+def _measured_baselines() -> dict[str, dict[str, Any]]:
+    """Read the frozen Full300 arms used as the no-AIGC comparison."""
+
+    report = _read_json(FULL300_BENCHMARK)
+    if report.get("task_count") != 300 or not report.get("all_arms_complete"):
+        raise RuntimeError("Full300 benchmark must be complete with exactly 300 tasks")
+    rows = {row["arm_id"]: row for row in report["rows"]}
+    if missing := set(BASELINE_ARM_IDS) - rows.keys():
+        raise RuntimeError(f"Full300 benchmark is missing baseline arms: {sorted(missing)}")
+    baselines: dict[str, dict[str, Any]] = {}
+    for arm_id in BASELINE_ARM_IDS:
+        row = rows[arm_id]
+        if row["required_task_count"] != 300 or row["completed_task_count"] != 300:
+            raise RuntimeError(f"baseline arm has an incomplete denominator: {arm_id}")
+        baselines[arm_id] = {
+            "arm_type": row["arm_type"],
+            "model_version": row["model_version"],
+            "quality_score_mean": row["quality_score_mean"],
+            "proxy_success_count": round(row["proxy_success_rate"] * 300),
+            "proxy_success_rate": row["proxy_success_rate"],
+            "proxy_routing_regret_mean": row["proxy_routing_regret_mean"],
+            "agent_call_count": row["agent_call_count"],
+            "agent_call_rate": row["agent_call_rate"],
+            "agent_schema_valid_count": row["agent_schema_valid_count"],
+            "agent_schema_valid_rate": row["agent_schema_valid_rate"],
+            "agent_latency_seconds_mean": row["agent_latency_seconds_mean"],
+            "agent_observed_tokens_total": row["agent_observed_tokens_total"],
+            "route_external_request_count": row["external_generation_count"],
+            "paid_aigc_call_count": 0,
+            "paid_aigc_cost_cny": 0.0,
+            "wall_seconds_total": row["wall_seconds_total"],
+            "cpu_seconds_total": row["cpu_seconds_total"],
+        }
+    return baselines
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Validate and estimate Full300 AIGC rescue policies."
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        help="Optional UTF-8 JSON output path; stdout is used when omitted.",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
+    args = _parse_args()
     selection = yaml.safe_load(
         (
             ROOT / "datasets/retarget_square_public_v2/aigc30_selection.yaml"
@@ -219,10 +287,14 @@ def main() -> None:
     )
     rules_estimated_cost_min = rules_observed["estimated_cost_min_cny"] * rules_scale
     rules_estimated_cost_max = rules_observed["estimated_cost_max_cny"] * rules_scale
+    measured_baselines = _measured_baselines()
+    qwen4_always = measured_baselines["qwen3vl4b-always"]
+    qwen4_conditional = measured_baselines["qwen3vl4b-conditional"]
+    no_agent = measured_baselines["no-agent-selector"]
 
     report = {
-        "schema_version": "1.0",
-        "benchmark_id": "retarget_square_public_v2_full300_aigc_rescue_estimate_v1",
+        "schema_version": "1.1",
+        "benchmark_id": "retarget_square_public_v2_full300_aigc_rescue_estimate_v2",
         "no_new_api_calls": True,
         "success_definition": (
             "proxy_business_success (Proxy A/B); provider output success is reported separately"
@@ -233,6 +305,30 @@ def main() -> None:
             "qwen4_nonfailed_tasks_in_aigc30": qwen4_nonexternal_observed,
             "rules_external_tasks_in_aigc30": rules_observed,
             "landscape_analogues_for_four_missing_qwen4_tasks": landscape_observed,
+        },
+        "measured_full300_no_aigc_baselines": measured_baselines,
+        "measured_qwen4_comparisons": {
+            "conditional_vs_no_agent": {
+                "quality_score_delta": qwen4_conditional["quality_score_mean"]
+                - no_agent["quality_score_mean"],
+                "proxy_success_count_delta": qwen4_conditional["proxy_success_count"]
+                - no_agent["proxy_success_count"],
+                "proxy_success_rate_delta": qwen4_conditional["proxy_success_rate"]
+                - no_agent["proxy_success_rate"],
+            },
+            "conditional_vs_always": {
+                "agent_calls_saved": qwen4_always["agent_call_count"]
+                - qwen4_conditional["agent_call_count"],
+                "agent_call_reduction_rate": (
+                    qwen4_always["agent_call_count"]
+                    - qwen4_conditional["agent_call_count"]
+                )
+                / qwen4_always["agent_call_count"],
+                "quality_score_delta": qwen4_conditional["quality_score_mean"]
+                - qwen4_always["quality_score_mean"],
+                "proxy_success_count_delta": qwen4_conditional["proxy_success_count"]
+                - qwen4_always["proxy_success_count"],
+            },
         },
         "all_aigc_full300_estimate": {
             "api_call_count": 300,
@@ -301,6 +397,10 @@ def main() -> None:
         },
         "notes": [
             (
+                "All measured_full300_no_aigc_baselines made zero paid AIGC calls; "
+                "route_external_request_count is a frozen routing decision, not a provider call."
+            ),
+            (
                 "Qwen4 uses direct evidence for 17/21 failed tasks; four missing "
                 "extreme-structure tasks use the 2/4 same-scene Proxy-success rate."
             ),
@@ -319,7 +419,14 @@ def main() -> None:
             ),
         ],
     }
-    print(json.dumps(report, ensure_ascii=False, indent=2))
+    payload = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
+    if args.output is None:
+        print(payload, end="")
+        return
+    output = args.output.resolve()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(payload, encoding="utf-8")
+    print(output)
 
 
 if __name__ == "__main__":
