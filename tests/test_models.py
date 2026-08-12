@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from retarget_agent.models import Rect, SourceRecord, TargetSpec, TaskSpec
+from retarget_agent.models import DatasetDescriptor, Rect, SourceRecord, TargetSpec, TaskSpec
 
 
 def source() -> SourceRecord:
@@ -47,3 +47,20 @@ def test_dataset_paths_cannot_escape_root() -> None:
             {**source().model_dump(), "image_path": "../secret.png"}
         )
 
+
+def test_dataset_descriptor_preserves_evaluation_resolution_policy() -> None:
+    descriptor = DatasetDescriptor(
+        dataset_id="public-v2",
+        version="2.0.0",
+        evaluation_canvas="1024x1024",
+        generation_originals_may_be_retained_at_2k=True,
+        silent_upsampling_forbidden=True,
+    )
+    assert descriptor.evaluation_canvas == "1024x1024"
+    assert descriptor.silent_upsampling_forbidden
+    with pytest.raises(ValidationError, match="positive WIDTHxHEIGHT"):
+        DatasetDescriptor(
+            dataset_id="public-v2",
+            version="2.0.0",
+            evaluation_canvas="1024 square",
+        )

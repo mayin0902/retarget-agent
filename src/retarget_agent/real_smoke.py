@@ -6,6 +6,7 @@ import csv
 import hashlib
 import io
 import math
+import shutil
 from collections import Counter
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -43,6 +44,9 @@ HD_TARGETS = (
     {"target_id": "wide-1536x800", "width": 1536, "height": 800, "format": "png"},
     {"target_id": "portrait-864x1536", "width": 864, "height": 1536, "format": "png"},
 )
+SQUARE_BENCHMARK_TARGETS = (
+    {"target_id": "square-1536x1536", "width": 1536, "height": 1536, "format": "png"},
+)
 SCENE_PROFILES = {
     "chinese_text_poster": "coverage",
     "single_product_promo": "precision",
@@ -69,9 +73,7 @@ def _read_manifest(path: Path) -> list[SourceAuditRecord]:
             f"real Smoke scene counts mismatch: expected={EXPECTED_SCENE_COUNTS}, "
             f"actual={dict(counts)}"
         )
-        raise ValueError(
-            message
-        )
+        raise ValueError(message)
     return records
 
 
@@ -108,8 +110,7 @@ def _verify_official_metadata(records: list[SourceAuditRecord]) -> None:
         current_license = metadata.get("LicenseShortName", {}).get("value", "")
         if current_license != record.license:
             raise ValueError(
-                f"license changed for {record.source_id}: {current_license!r} != "
-                f"{record.license!r}"
+                f"license changed for {record.source_id}: {current_license!r} != {record.license!r}"
             )
         current_license_url = metadata.get("LicenseUrl", {}).get("value", "")
         public_domain_evidence = (
@@ -123,9 +124,7 @@ def _verify_official_metadata(records: list[SourceAuditRecord]) -> None:
         ):
             raise ValueError(f"license URL changed for {record.source_id}")
         official_page = image_info.get("descriptionurl", "")
-        expected_title = unquote(urlparse(official_page).path.rsplit("/", 1)[-1]).replace(
-            "_", " "
-        )
+        expected_title = unquote(urlparse(official_page).path.rsplit("/", 1)[-1]).replace("_", " ")
         if expected_title != record.official_file_title:
             raise ValueError(f"official File identity changed for {record.source_id}")
         if official_page.rstrip("/") != record.official_source.rstrip("/"):
@@ -192,19 +191,22 @@ def _select_targets(
     width: int,
     height: int,
     targets: tuple[dict[str, object], ...] = TARGETS,
-) -> tuple[dict[str, object], dict[str, object]]:
+    target_count: int = 2,
+    minimum_pressure: float = 0.25,
+) -> tuple[dict[str, object], ...]:
+    if target_count < 1 or target_count > len(targets):
+        raise ValueError("target_count must select at least one available target")
     source_ratio = width / height
     ranked = sorted(
         targets,
         key=lambda target: abs(math.log((target["width"] / target["height"]) / source_ratio)),
         reverse=True,
     )
-    selected = (ranked[0], ranked[1])
+    selected = tuple(ranked[:target_count])
     pressures = [
-        abs(math.log((target["width"] / target["height"]) / source_ratio))
-        for target in selected
+        abs(math.log((target["width"] / target["height"]) / source_ratio)) for target in selected
     ]
-    if min(pressures) < 0.25:
+    if min(pressures) < minimum_pressure:
         raise ValueError(
             f"could not choose two non-trivial target ratios for source ratio {source_ratio:.4f}"
         )
@@ -255,6 +257,9 @@ def materialize_real_smoke(
     *,
     dataset_id: str = "retarget_smoke_real_v1",
     targets: tuple[dict[str, object], ...] = TARGETS,
+    target_count: int = 2,
+    source_cache: Path | None = None,
+    minimum_pressure: float = 0.25,
     description: str = "Twelve audited real-world public images for retargeting Smoke.",
 ) -> Path:
     records = _read_manifest(manifest_path)
@@ -265,6 +270,14 @@ def materialize_real_smoke(
     tasks: list[dict[str, object]] = []
     for record in records:
         image_path = images_dir / record.local_filename
+        if not image_path.exists() and source_cache is not None:
+            cached_path = source_cache / record.local_filename
+            if cached_path.is_file():
+                cached_digest = hashlib.sha256(cached_path.read_bytes()).hexdigest()
+                if cached_digest != record.sha256:
+                    raise ValueError(f"cached file hash mismatch for {record.source_id}")
+                image_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(cached_path, image_path)
         _download(record, image_path)
         sources.append(
             {
@@ -283,7 +296,13 @@ def materialize_real_smoke(
                 "test_purpose": "",
             }
         )
-        for target in _select_targets(record.expected_width, record.expected_height, targets):
+        for target in _select_targets(
+            record.expected_width,
+            record.expected_height,
+            targets,
+            target_count,
+            minimum_pressure,
+        ):
             tasks.append(
                 {
                     "task_id": f"{record.source_id}__{target['target_id']}",

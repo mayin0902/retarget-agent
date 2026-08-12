@@ -48,6 +48,15 @@ class ReviewGrade(StrEnum):
     SKIP = "Skip"
 
 
+class ProxyGrade(StrEnum):
+    """Uncalibrated automatic quality tier; never a substitute for human ReviewGrade."""
+
+    A = "proxy_a"
+    B = "proxy_b"
+    C = "proxy_c"
+    UNKNOWN = "unknown"
+
+
 class RegionKind(StrEnum):
     MUST_KEEP = "must_keep"
     PREFER_KEEP = "prefer_keep"
@@ -112,8 +121,21 @@ class DatasetDescriptor(FrozenModel):
     source_audit_file: str | None = None
     expected_source_count: int | None = Field(default=None, gt=0)
     expected_scene_counts: dict[str, int] = Field(default_factory=dict)
+    evaluation_canvas: str | None = None
+    generation_originals_may_be_retained_at_2k: bool = False
+    silent_upsampling_forbidden: bool = False
 
     _dataset_id = field_validator("dataset_id")(validate_id)
+
+    @field_validator("evaluation_canvas")
+    @classmethod
+    def valid_evaluation_canvas(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        match = re.fullmatch(r"([1-9][0-9]*)x([1-9][0-9]*)", value)
+        if match is None:
+            raise ValueError("evaluation_canvas must be formatted as positive WIDTHxHEIGHT")
+        return value
 
 
 class SourceRecord(FrozenModel):
@@ -457,6 +479,22 @@ class ReplayManifest(FrozenModel):
     _replay_id = field_validator("replay_id")(validate_id)
 
 
+class EvaluationManifest(FrozenModel):
+    evaluation_id: str
+    source_run_id: str
+    evaluator_id: str
+    evaluator_version: str
+    config_hash: str
+    task_ids: tuple[str, ...]
+    candidate_ids: tuple[str, ...]
+    metric_bundle_ids: tuple[str, ...]
+    created_at: datetime = Field(default_factory=utc_now)
+
+    _evaluation_id = field_validator("evaluation_id")(validate_id)
+    _source_run_id = field_validator("source_run_id")(validate_id)
+    _evaluator_id = field_validator("evaluator_id")(validate_id)
+
+
 # Future-boundary records. They deliberately carry no provider-specific fields.
 class ProtectionDecision(FrozenModel):
     decision_id: str
@@ -498,6 +536,10 @@ class AgentCallRecord(FrozenModel):
     error_type: str | None = None
     latency_seconds: float | None = Field(default=None, ge=0.0)
     tokens: int | None = Field(default=None, ge=0)
+    input_tokens: int | None = Field(default=None, ge=0)
+    output_tokens: int | None = Field(default=None, ge=0)
+    attempt_count: int = Field(default=1, ge=1, le=2)
+    cache_hit: bool = False
     estimated_cost: float | None = Field(default=None, ge=0.0)
     changed_top1: bool = False
     fallback_strategy: str | None = None

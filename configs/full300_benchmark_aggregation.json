@@ -1,0 +1,52 @@
+{
+  "rounds": [
+    {
+      "name": "pilot60",
+      "benchmark_report": "../runs/square-public-v2-pilot60-20260812/benchmarks/pilot60-agent-complete-v3/report.json",
+      "arm_map": {
+        "method-direct-warp": "method:direct_warp",
+        "method-crop": "method:crop",
+        "method-seam": "method:seam",
+        "method-mesh": "method:mesh",
+        "posthoc-proxy-upper-bound": "upper-bound:posthoc-proxy-argmax",
+        "no-agent-selector": "route:no-agent-generation-selector",
+        "fixed-direct-warp": "route:no-agent-fixed-direct_warp-v1",
+        "fixed-crop": "route:no-agent-fixed-crop-v1",
+        "fixed-seam": "route:no-agent-fixed-seam-v1",
+        "fixed-mesh": "route:no-agent-fixed-mesh-v1",
+        "rules-router": "route:rules-router-v1",
+        "proxy-ranker": "route:proxy-ranker-oracle-v1",
+        "qwen3vl4b-always": "route:agent-qwen3vl4b-always-pilot-v1",
+        "qwen3vl4b-conditional": "route:agent-qwen3vl4b-conditional-pilot-v1",
+        "qwen3vl8b-always": "route:agent-qwen3vl8b-always-pilot-v1",
+        "qwen3vl8b-conditional": "route:agent-qwen3vl8b-conditional-pilot-v1",
+        "smolvlm2-always": "route:agent-smolvlm2-always-pilot-v2",
+        "smolvlm2-conditional": "route:agent-smolvlm2-conditional-pilot-v2"
+      }
+    },
+    {
+      "name": "heldout240",
+      "benchmark_report": "../runs/square-public-v2-heldout240-20260812/benchmarks/heldout240-agent-complete-v1/report.json",
+      "arm_map": {
+        "method-direct-warp": "method:direct_warp",
+        "method-crop": "method:crop",
+        "method-seam": "method:seam",
+        "method-mesh": "method:mesh",
+        "posthoc-proxy-upper-bound": "upper-bound:posthoc-proxy-argmax",
+        "no-agent-selector": "route:no-agent-generation-selector",
+        "fixed-direct-warp": "route:no-agent-fixed-direct_warp-heldout-v1",
+        "fixed-crop": "route:no-agent-fixed-crop-heldout-v1",
+        "fixed-seam": "route:no-agent-fixed-seam-heldout-v1",
+        "fixed-mesh": "route:no-agent-fixed-mesh-heldout-v1",
+        "rules-router": "route:rules-router-heldout-v1",
+        "proxy-ranker": "route:proxy-ranker-heldout-v1",
+        "qwen3vl4b-always": "route:agent-qwen3vl4b-always-heldout-v1",
+        "qwen3vl4b-conditional": "route:agent-qwen3vl4b-conditional-heldout-v1",
+        "qwen3vl8b-always": "route:agent-qwen3vl8b-always-heldout-v1",
+        "qwen3vl8b-conditional": "route:agent-qwen3vl8b-conditional-heldout-v1",
+        "smolvlm2-always": "route:agent-smolvlm2-always-heldout-v2",
+        "smolvlm2-conditional": "route:agent-smolvlm2-conditional-heldout-v2"
+      }
+    }
+  ]
+}

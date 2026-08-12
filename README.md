@@ -1,5 +1,15 @@
 # retarget-agent
 
+最新的 30 张纯 AIGC、三种 Agent、四种传统方法与 Qwen4+SeedDream Hybrid 的
+质量/时延/API 成本实测见
+[`docs/runs/aigc30-seedream5-20260812.md`](docs/runs/aigc30-seedream5-20260812.md)。
+Full300 上“全部 AIGC / Qwen4 自动换 AIGC / 规则自动换 AIGC”的成功率与成本
+估算见
+[`docs/runs/aigc-rescue-estimate-20260812.md`](docs/runs/aigc-rescue-estimate-20260812.md)。
+
+完整的 Full300 架构、算法路线、Agent 动态路由、前后端时序、资源成本和复现说明见
+[`docs/runs/square-public-v2-full300-20260812-detailed.md`](docs/runs/square-public-v2-full300-20260812-detailed.md)。
+
 可回放、可审计的图片重定向实验平台。当前开发基线是 Direct Warp、保护式 Crop、保护式 Seam 和受约束 Mesh 四候选闭环。
 
 ## Windows quick start
