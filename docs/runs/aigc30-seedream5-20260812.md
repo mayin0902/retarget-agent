@@ -276,5 +276,6 @@ SeedDream 返回不包含单图实际账单，所以 `actual_cost_cny=null`。�
 - `scripts/report_aigc30_benchmark.py`
 - `scripts/build_aigc30_representatives.py`
 - `docs/reviews/aigc30-codex-visual-review.md`
+- `docs/runs/aigc-rescue-estimate-20260812.md`（Full300 三种 AIGC 策略外推）
 - `runs/aigc30-seedream5-v3-20260812/`（Git 忽略，本地冻结）
 - `local_data/deliverables/retarget-agent-aigc30-20260812-v2/`（Git 忽略，待打包）

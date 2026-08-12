@@ -14,7 +14,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 ROOT = Path(__file__).resolve().parents[1]
 AIGC = ROOT / "runs/aigc30-seedream5-v3-20260812"
 BENCH = AIGC / "benchmarks/aigc30-api-only-v1"
-OUTPUT = ROOT / "local_data/deliverables/retarget-agent-aigc30-20260812-v4"
+OUTPUT = ROOT / "local_data/deliverables/retarget-agent-aigc30-20260812-v6"
 RUNS = {
     "pilot60": ROOT / "runs/square-public-v2-pilot60-20260812",
     "heldout240": ROOT / "runs/square-public-v2-heldout240-20260812",

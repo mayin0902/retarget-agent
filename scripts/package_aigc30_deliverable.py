@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RUN = ROOT / "runs/aigc30-seedream5-v3-20260812"
-OUTPUT = ROOT / "local_data/deliverables/retarget-agent-aigc30-20260812-v4"
+OUTPUT = ROOT / "local_data/deliverables/retarget-agent-aigc30-20260812-v6"
 ZIP = OUTPUT.with_suffix(".zip")
 
 
@@ -27,6 +27,7 @@ def main() -> None:
 
     for source in (
         ROOT / "docs/runs/aigc30-seedream5-20260812.md",
+        ROOT / "docs/runs/aigc-rescue-estimate-20260812.md",
         ROOT / "docs/runs/square-public-v2-full300-20260812-detailed.md",
         ROOT / "docs/reviews/aigc30-codex-visual-review.md",
         ROOT / "docs/reviews/aigc30-codex-visual-review.csv",
