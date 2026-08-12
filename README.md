@@ -1,5 +1,8 @@
 # retarget-agent
 
+完整的 Full300 架构、算法路线、Agent 动态路由、前后端时序、资源成本和复现说明见
+[`docs/runs/square-public-v2-full300-20260812-detailed.md`](docs/runs/square-public-v2-full300-20260812-detailed.md)。
+
 可回放、可审计的图片重定向实验平台。当前开发基线是 Direct Warp、保护式 Crop、保护式 Seam 和受约束 Mesh 四候选闭环。
 
 ## Windows quick start

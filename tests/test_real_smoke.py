@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import math
 
-from retarget_agent.real_smoke import HD_TARGETS, TARGETS, _select_targets
+from retarget_agent.real_smoke import (
+    HD_TARGETS,
+    SQUARE_BENCHMARK_TARGETS,
+    TARGETS,
+    _select_targets,
+)
 
 
 def test_real_smoke_selects_two_farthest_nontrivial_ratios() -> None:
@@ -28,3 +33,9 @@ def test_hd_target_catalog_is_review_resolution_and_keeps_ratio_pressure() -> No
     assert len(ratios) == 3
     selected = _select_targets(1920, 1080, HD_TARGETS)
     assert len(selected) == 2
+
+
+def test_square_benchmark_selects_exactly_one_hd_target() -> None:
+    selected = _select_targets(2170, 3072, SQUARE_BENCHMARK_TARGETS, target_count=1)
+    assert selected == SQUARE_BENCHMARK_TARGETS
+    assert selected[0]["width"] == selected[0]["height"] == 1536

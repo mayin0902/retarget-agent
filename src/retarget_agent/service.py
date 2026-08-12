@@ -43,6 +43,103 @@ class RetargetApplicationService:
 
         return run_evaluation_replay(run_dir, replay_id).model_dump(mode="json")
 
+    def evaluate(
+        self,
+        run_dir: Path,
+        evaluation_id: str,
+        *,
+        rerun_detectors: bool = True,
+    ) -> dict[str, Any]:
+        from .evaluation import EvaluationConfig, evaluate_run
+
+        config = EvaluationConfig(rerun_detectors=rerun_detectors)
+        return evaluate_run(run_dir, evaluation_id, config).model_dump(mode="json")
+
+    def replay_agent(
+        self,
+        run_dir: Path,
+        evaluation_id: str,
+        agent_run_id: str,
+        *,
+        mode: str,
+        backend_url: str | None = None,
+        model_version: str | None = None,
+        api_key_env: str | None = None,
+        allow_external_aigc: bool = False,
+        max_agent_calls: int | None = None,
+        fixed_method_id: str | None = None,
+    ) -> dict[str, Any]:
+        from .agents import (
+            AgentMode,
+            AgentReplayConfig,
+            OpenAICompatibleVisionBackend,
+            run_agent_replay,
+        )
+        from .hashing import sha256_json
+
+        parsed_mode = AgentMode(mode)
+        backend = None
+        if backend_url is not None or model_version is not None:
+            if not backend_url or not model_version:
+                raise ValueError("backend_url and model_version must be provided together")
+            backend = OpenAICompatibleVisionBackend(
+                base_url=backend_url,
+                model_version=model_version,
+                api_key_env=api_key_env,
+                cache_path=(
+                    run_dir.resolve()
+                    / "agent-cache"
+                    / f"{sha256_json({'model_version': model_version})}.json"
+                ),
+            )
+        if parsed_mode is not AgentMode.HARD_RANKER and backend is None:
+            raise ValueError("conditional and always-on modes require an Agent backend")
+        config = AgentReplayConfig(
+            mode=parsed_mode,
+            allow_external_aigc=allow_external_aigc,
+            max_agent_calls=max_agent_calls,
+            fixed_method_id=fixed_method_id,
+        )
+        return run_agent_replay(
+            run_dir,
+            evaluation_id,
+            agent_run_id,
+            config,
+            backend,
+        ).model_dump(mode="json")
+
+    def build_benchmark(
+        self,
+        run_dir: Path,
+        evaluation_id: str,
+        benchmark_id: str,
+        route_ids: tuple[str, ...] = (),
+    ) -> dict[str, Any]:
+        from .benchmarking import build_benchmark_report
+
+        return build_benchmark_report(run_dir, evaluation_id, benchmark_id, route_ids)
+
+    def plan_external_generation(
+        self,
+        run_dir: Path,
+        evaluation_id: str,
+        generation_plan_id: str,
+        agent_run_ids: tuple[str, ...],
+        source_audit_path: Path,
+        *,
+        maximum_paid_calls: int = 12,
+    ) -> dict[str, Any]:
+        from .generation_planning import plan_external_generation
+
+        return plan_external_generation(
+            run_dir,
+            evaluation_id,
+            generation_plan_id,
+            agent_run_ids,
+            source_audit_path,
+            maximum_paid_calls=maximum_paid_calls,
+        )
+
     def load_review_workspace(self, run_dir: Path, reviewer_id: str) -> dict[str, Any]:
         from .review import load_review_workspace
 
